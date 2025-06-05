@@ -3,6 +3,10 @@
 import React from 'react'; // No need for useState, useEffect here anymore
 import { Routes, Route, Link,useParams } from 'react-router-dom';
 
+// NEW: Import react-toastify components and CSS
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 import ArticleDetail from './components/ArticleDetail';
 import ArticleForm from './components/ArticleForm';
 import HomeComponent from './components/HomeComponent';
@@ -96,6 +100,21 @@ function App() {
       <footer>
         <p>&copy; {new Date().getFullYear()} News Website. All rights reserved.</p>
       </footer>
+   
+
+    {/* NEW: Add the ToastContainer here */}
+      <ToastContainer
+        position="top-right" // You can change this (e.g., "bottom-left", "top-center")
+        autoClose={5000}    // How long the toast stays (in ms)
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored" // "light", "dark", "colored"
+      />
     </div>
   );
 }

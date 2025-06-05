@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react'; // Import useEffect
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify'; // NEW: Import toast here
+
 
 
 // Accept an optional 'article' prop and 'onSuccess' callback
@@ -96,7 +98,9 @@ function ArticleForm({ article, onSuccess }) {
       }
 
       const resultArticle = await response.json();
-      setMessage(`Article ${article ? 'updated' : 'created'} successfully!`);
+      //setMessage(`Article ${article ? 'updated' : 'created'} successfully!`);
+      toast.success(`Article ${article ? 'updated' : 'created'} successfully!`); // NEW: Use toast.success
+
       console.log(`${article ? 'Updated' : 'Created'} article:`, resultArticle);
 
       // Call the onSuccess callback if provided (e.g., to refresh articles list)

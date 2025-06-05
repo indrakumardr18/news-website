@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify'; // NEW: Import toast here
+
 
 function HomeComponent() {
   const [articles, setArticles] = useState([]);
@@ -51,7 +53,9 @@ function HomeComponent() {
         alert("Article deleted successfully!");
       } catch (err) {
         console.error('Error deleting article:', err);
-        alert(`Error deleting article: ${err.message}`);
+        //alert(`Error deleting article: ${err.message}`);
+        toast.error(`Error deleting article: ${err.message}`); // NEW: Use toast.error
+
       }
     }
   };
