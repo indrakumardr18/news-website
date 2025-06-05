@@ -1,4 +1,28 @@
 /* client/src/App.css */
+/* Universal box-sizing for easier layout */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+body {
+  margin: 0; /* Remove default body margin */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f4f7f6;
+  color: #333;
+  line-height: 1.6;
+}
+.App {
+  max-width: 1200px; /* Center content, match Navbar */
+  margin: 0 auto; /* Center the entire app horizontally */
+  padding: 0 20px; /* Add padding on the sides for smaller screens */
+  min-height: 100vh; /* Ensure app takes full viewport height */
+  display: flex;
+  flex-direction: column;
+}
+/* Adjust main content area to take available space */
+.App > .routes-wrapper { /* You might need to wrap your <Routes> in a div */
+  flex-grow: 1;
+  padding: 20px 0; /* Add some vertical padding below Navbar */
+}
 
 #root {
   max-width: 1280px;

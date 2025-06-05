@@ -70,9 +70,9 @@ function HomeComponent() {
 
   return (
     <>
-      <div style={{ textAlign: 'right', marginBottom: '20px' }}>
+      {/* <div style={{ textAlign: 'right', marginBottom: '20px' }}>
         <Link to="/create-article" className="create-article-link">Create New Article</Link>
-      </div>
+      </div> */}
 
       <h1>Latest News</h1>
       <div className="articles-container">

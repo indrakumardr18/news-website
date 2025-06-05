@@ -10,6 +10,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import ArticleDetail from './components/ArticleDetail';
 import ArticleForm from './components/ArticleForm';
 import HomeComponent from './components/HomeComponent';
+import Navbar from './components/Navbar';
 import './App.css';
 
 function App() {
@@ -77,6 +78,9 @@ function App() {
 
   return (
     <div className="App">
+      <Navbar />
+      <div className="routes-wrapper"> {/* NEW: Add this wrapper */}
+
       <Routes>
         <Route path="/" element={<HomeComponent />} />
         <Route path="/article/:id" element={<ArticleDetail />} />
@@ -88,13 +92,14 @@ function App() {
           a prop from App that calls a method in HomeComponent.
         */}
         {/* For create-article, ArticleForm handles its own success message and redirect now */}
-        <Route path="/create-article" element={<ArticleForm />} />
+       <Route path="/create-article" element={<ArticleForm />} />
 
         {/* RE-ADD THIS ROUTE LINE */}
         <Route path="/edit-article/:id" element={<EditArticlePage />} />
 
         <Route path="*" element={<h2>404 - Page Not Found</h2>} />
       </Routes>
+    </div> {/* NEW: Close the wrapper */}
 
       {/* Add this footer section */}
       <footer>
