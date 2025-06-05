@@ -68,6 +68,33 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
+app.get('/api/articles', async (req, res) => {
+  try {
+    const { query } = req.query; // NEW: Get the 'query' parameter from the URL
+
+    let filter = {}; // Initialize an empty filter object
+
+    if (query) {
+      // If a query exists, build a filter to search across multiple fields
+      const searchRegex = new RegExp(query, 'i'); // 'i' for case-insensitive
+      filter = {
+        $or: [ // Use $or to match if the query exists in any of these fields
+          { title: searchRegex },
+          { content: searchRegex },
+          { category: searchRegex },
+          { author: searchRegex },
+        ],
+      };
+    }
+
+    const articles = await Article.find(filter).sort({ createdAt: -1 }); // NEW: Apply the filter
+    res.status(200).json(articles);
+  } catch (err) {
+    console.error('Error fetching articles:', err);
+    res.status(500).json({ message: 'Internal server error', error: err.message });
+  }
+});
+
 // ----------------------------------------------------
 // NEW: API endpoint to get a single article by ID
 app.get('/api/articles/:id', async (req, res) => {
