@@ -36,12 +36,14 @@ function App() {
           a prop from App that calls a method in HomeComponent.
         */}
         <Route path="/create-article" element={<ArticleForm />} /> {/* Removed onSuccess={refreshArticles} */}
-        {/* Add this footer section */}
+        
+        <Route path="*" element={<h2>404 - Page Not Found</h2>} />
+      </Routes>
+
+      {/* Add this footer section */}
       <footer>
         <p>&copy; {new Date().getFullYear()} News Website. All rights reserved.</p>
       </footer>
-        <Route path="*" element={<h2>404 - Page Not Found</h2>} />
-      </Routes>
     </div>
   );
 }
