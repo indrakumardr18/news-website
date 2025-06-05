@@ -1,7 +1,8 @@
 // client/src/components/ArticleForm.jsx
 
 import React, { useState, useEffect } from 'react'; // Import useEffect
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+
 
 // Accept an optional 'article' prop and 'onSuccess' callback
 function ArticleForm({ article, onSuccess }) {

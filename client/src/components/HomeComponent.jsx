@@ -82,6 +82,10 @@ function HomeComponent() {
               <span className="article-category">{article.category}</span>
               <div className="article-actions">
                 <Link to={`/article/${article._id}`} className="read-more">Read More</Link>
+                
+                {/* RE-ADD THIS EDIT LINK */}
+                <Link to={`/edit-article/${article._id}`} className="edit-button">Edit</Link>
+
                 <button onClick={() => handleDelete(article._id)} className="delete-button">Delete</button>
               </div>
             </div>
