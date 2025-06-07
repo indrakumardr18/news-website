@@ -1,14 +1,21 @@
 // 1. Import the express library
 const express = require('express');
-
-// Important cros
-
 const cors = require('cors'); // Import the cors package
-
-
 const mongoose = require('mongoose'); // Import Mongoose
+const jwt = require('jsonwebtoken'); // Import jsonwebtoken for JWTs
+const bcrypt = require('bcryptjs'); // Import bcryptjs for password comparison
+
 require('dotenv').config(); // Load environment variables from .env file
 
+// Import the User model
+const User = require('./models/User');
+
+// Import express-validator for input validation
+const { check, validationResult } = require('express-validator');
+
+// Import the auth and adminAuth middleware
+const auth = require('./middleware/auth'); // Your authentication middleware
+const adminAuth = require('./middleware/adminAuth'); // Your new admin authorization middleware
 
 // 2. Create an instance of the express application
 const app = express();
@@ -16,69 +23,234 @@ const app = express();
 // 3. Define the port our server will listen on
 const PORT = process.env.PORT || 3000; // Use port from environment variable or default to 3000
 
-// 4. Define a route handler for GET requests to the root URL ('/')
-// When someone visits http://localhost:3000/, this function will run.
-app.get('/', (req, res) => {
-  res.send('Hello, World! Welcome to our News App Backend!');
-});
-
-
-// Middleware to parse JSON bodies
-// This is important! It tells Express to expect and parse JSON data in incoming requests.
-app.use(express.json());
+// Middleware to parse JSON bodies and allow CORS
+app.use(express.json()); // Tells Express to expect and parse JSON data in incoming requests.
 app.use(cors()); // Use the cors middleware to allow cross-origin requests
 
 // Database Connection
 mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log('MongoDB connected successfully!'))
 .catch(err => console.error('MongoDB connection error:', err));
-// ----------------------------------------------------
 
 // ----------------------------------------------------
 // Define Mongoose Schema and Model for News Articles
 const articleSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  content: { type: String, required: true },
-  category: { type: String, required: true },
-  author: { type: String, required: true },
-  imageUrl: { type: String, default: 'https://via.placeholder.com/150' },
-  publishedDate: { type: Date, default: Date.now },
-  // You can add more fields later, e.g., views, tags, comments
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  content: {
+    type: String,
+    required: true
+  },
+  category: {
+    type: String,
+    required: true
+  },
+  author: {
+    type: String,
+    required: true
+  },
+  imageUrl: {
+    type: String,
+    default: 'https://via.placeholder.com/600x400?text=No+Image'
+  },
+  publishedDate: {
+    type: Date,
+    default: Date.now
+  },
+  likes: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    }
+  ],
+  comments: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      text: {
+        type: String,
+        required: true
+      },
+      date: {
+        type: Date,
+        default: Date.now
+      }
+    }
+  ]
 });
 
-const Article = mongoose.model('Article', articleSchema); // Create the Article model
+const Article = mongoose.model('Article', articleSchema);
 // ----------------------------------------------------
 
-// ----------------------------------------------------
 // Existing "Hello, World!" route
 app.get('/', (req, res) => {
   res.send('Hello, World! Welcome to our News App Backend!');
 });
-// ----------------------------------------------------
 
-// ----------------------------------------------------
-// NEW: API endpoint to get all articles from the database
-app.get('/api/articles', async (req, res) => {
+// --- Authentication Routes ---
+
+// @route   POST /api/auth/register
+// @desc    Register user
+// @access  Public
+app.post(
+  '/api/auth/register',
+  [
+    check('username', 'Username is required').not().isEmpty(),
+    check('username', 'Username must be at least 3 characters long').isLength({ min: 3 }),
+    check('email', 'Please include a valid email').isEmail(),
+    check('password', 'Password is required').not().isEmpty(),
+    check('password', 'Password must be at least 6 characters long').isLength({ min: 6 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { username, email, password } = req.body;
+
+    try {
+      let user = await User.findOne({ email });
+      if (user) {
+        return res.status(400).json({ msg: 'User with that email already exists' });
+      }
+
+      user = await User.findOne({ username });
+      if (user) {
+        return res.status(400).json({ msg: 'Username already taken' });
+      }
+
+      user = new User({
+        username,
+        email,
+        password,
+        role: 'user'
+      });
+
+      await user.save();
+
+      const payload = {
+        user: {
+          id: user.id,
+          username: user.username, // <-- ADD THIS LINE
+          role: user.role
+        }
+      };
+
+      jwt.sign(
+        payload,
+        process.env.JWT_SECRET,
+        { expiresIn: '5h' },
+        (err, token) => {
+          if (err) throw err;
+          res.json({ token, msg: 'User registered successfully!' });
+        }
+      );
+
+    } catch (err) {
+      console.error(err.message);
+      res.status(500).send('Server Error');
+    }
+  }
+);
+
+// @route   POST /api/auth/login
+// @desc    Authenticate user & get token
+// @access  Public
+app.post(
+  '/api/auth/login',
+  [
+    check('email', 'Please include a valid email').isEmail(),
+    check('password', 'Password is required').exists(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    try {
+      let user = await User.findOne({ email });
+      if (!user) {
+        return res.status(400).json({ msg: 'Invalid Credentials' });
+      }
+
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(400).json({ msg: 'Invalid Credentials' });
+      }
+
+      const payload = {
+        user: {
+          id: user.id,
+          username: user.username, // <-- ADD THIS LINE
+          role: user.role
+        }
+      };
+
+      jwt.sign(
+        payload,
+        process.env.JWT_SECRET,
+        { expiresIn: '5h' },
+        (err, token) => {
+          if (err) throw err;
+          res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+        }
+      );
+
+    } catch (err) {
+      console.error(err.message);
+      res.status(500).send('Server Error');
+    }
+  }
+);
+
+// @route   GET /api/auth/me
+// @desc    Get logged in user data
+// @access  Private
+app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const articles = await Article.find().sort({ publishedDate: -1 }); // Fetch all articles, sort by date
-    res.json(articles);
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    res.json(user);
   } catch (err) {
-    console.error('Error fetching articles:', err);
-    res.status(500).json({ message: 'Server error fetching articles.' });
+    console.error(err.message);
+    res.status(500).send('Server Error');
   }
 });
 
+
+// --- Article Routes ---
+
+// @route   GET /api/articles
+// @desc    Get all articles (with optional search query)
+// @access  Public
 app.get('/api/articles', async (req, res) => {
   try {
-    const { query } = req.query; // NEW: Get the 'query' parameter from the URL
+    const { query } = req.query;
 
-    let filter = {}; // Initialize an empty filter object
+    let filter = {};
 
     if (query) {
-      // If a query exists, build a filter to search across multiple fields
-      const searchRegex = new RegExp(query, 'i'); // 'i' for case-insensitive
+      const searchRegex = new RegExp(query, 'i');
       filter = {
-        $or: [ // Use $or to match if the query exists in any of these fields
+        $or: [
           { title: searchRegex },
           { content: searchRegex },
           { category: searchRegex },
@@ -87,7 +259,10 @@ app.get('/api/articles', async (req, res) => {
       };
     }
 
-    const articles = await Article.find(filter).sort({ createdAt: -1 }); // NEW: Apply the filter
+    const articles = await Article.find(filter)
+      .sort({ publishedDate: -1 })
+      .populate('user', ['username', 'email', 'role']);
+
     res.status(200).json(articles);
   } catch (err) {
     console.error('Error fetching articles:', err);
@@ -95,12 +270,14 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
-// ----------------------------------------------------
-// NEW: API endpoint to get a single article by ID
+// @route   GET /api/articles/:id
+// @desc    Get a single article by ID
+// @access  Public
 app.get('/api/articles/:id', async (req, res) => {
   try {
-    const { id } = req.params; // Get the ID from the URL parameters
-    const article = await Article.findById(id); // Find article by its MongoDB _id
+    const { id } = req.params;
+
+    const article = await Article.findById(id).populate('user', ['username', 'email', 'role']);
 
     if (!article) {
       return res.status(404).json({ message: 'Article not found.' });
@@ -109,166 +286,155 @@ app.get('/api/articles/:id', async (req, res) => {
     res.json(article);
   } catch (err) {
     console.error(`Error fetching article with ID ${req.params.id}:`, err);
-    // Mongoose can throw a CastError if ID format is invalid
     if (err.name === 'CastError') {
         return res.status(400).json({ message: 'Invalid article ID format.' });
     }
     res.status(500).json({ message: 'Server error fetching article.' });
   }
 });
-// ----------------------------------------------------
 
-// ----------------------------------------------------
-// NEW: API endpoint to create a new article
-app.post('/api/articles', async (req, res) => {
-  try {
-    // Extract article data from the request body
-    const { title, content, category, author, imageUrl } = req.body;
-
-    // Basic validation (can be more robust later)
-    if (!title || !content || !category || !author) {
-      return res.status(400).json({ message: 'Please provide title, content, category, and author.' });
+// @route   POST /api/articles
+// @desc    Create a new article
+// @access  Private (Auth required)
+app.post(
+  '/api/articles',
+  [
+    auth,
+    [
+      check('title', 'Title is required').not().isEmpty(),
+      check('content', 'Content is required').not().isEmpty(),
+      check('category', 'Category is required').not().isEmpty()
+    ]
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    // Create a new Article document using the Mongoose model
-    const newArticle = new Article({
-      title,
-      content,
-      category,
-      author,
-      imageUrl: imageUrl || 'https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Image', // Default image if not provided
-      publishedDate: new Date() // Set current date/time
-    });
+    try {
+        const { title, content, category, imageUrl, publishedDate } = req.body;
 
-    // Save the new article to the database
-    const savedArticle = await newArticle.save();
+        const newArticle = new Article({
+            title,
+            content,
+            category,
+            imageUrl: imageUrl || 'https://via.placeholder.com/600x400?text=No+Image',
+            publishedDate: publishedDate || Date.now(),
+            user: req.user.id,
+            author: req.user.username
+        });
 
-    // Respond with the newly created article and a 201 Created status
-    res.status(201).json(savedArticle);
+        const savedArticle = await newArticle.save();
+        res.status(201).json(savedArticle);
 
-  } catch (err) {
-    console.error('Error creating article:', err);
-    // Mongoose validation errors will have an 'errors' property
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map(val => val.message);
-      return res.status(400).json({ message: messages.join(', ') });
+    } catch (err) {
+      console.error('Error creating article:', err);
+      if (err.name === 'ValidationError') {
+        const messages = Object.values(err.errors).map(val => val.message);
+        return res.status(400).json({ message: messages.join(', ') });
+      }
+      res.status(500).json({ message: 'Server error creating article.' });
     }
-    res.status(500).json({ message: 'Server error creating article.' });
   }
-});
-// ----------------------------------------------------
-// NEW: API endpoint to delete an article by ID
-app.delete('/api/articles/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const deletedArticle = await Article.findByIdAndDelete(id); // Find and delete by _id
+);
 
-    if (!deletedArticle) {
-      return res.status(404).json({ message: 'Article not found.' });
+// @route   PUT /api/articles/:id
+// @desc    Update an article (only by owner or admin)
+// @access  Private (Auth required)
+app.put(
+  '/api/articles/:id',
+  [
+    auth,
+    [
+      check('title', 'Title is required').not().isEmpty(),
+      check('content', 'Content is required').not().isEmpty(),
+      check('category', 'Category is required').not().isEmpty()
+    ]
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    // Respond with a 204 No Content status if successful (common for DELETE)
-    // Or you can send the deleted article: res.json(deletedArticle);
-    res.status(204).send(); // No content to send back, just success confirmation
+    const { title, content, category, imageUrl } = req.body;
 
-  } catch (err) {
-    console.error(`Error deleting article with ID ${req.params.id}:`, err);
-    if (err.name === 'CastError') {
-        return res.status(400).json({ message: 'Invalid article ID format.' });
+    const articleFields = {};
+    if (title) articleFields.title = title;
+    if (content) articleFields.content = content;
+    if (category) articleFields.category = category;
+    if (imageUrl) articleFields.imageUrl = imageUrl;
+
+    try {
+      let article = await Article.findById(req.params.id);
+
+      if (!article) {
+        return res.status(404).json({ msg: 'Article not found' });
+      }
+
+      if (article.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'User not authorized to update this article' });
+      }
+
+      article = await Article.findByIdAndUpdate(
+        req.params.id,
+        { $set: articleFields },
+        { new: true, runValidators: true }
+      );
+
+      res.json(article);
+
+    } catch (err) {
+      console.error(err.message);
+      if (err.name === 'CastError') {
+        return res.status(400).json({ msg: 'Invalid article ID format.' });
+      }
+      if (err.name === 'ValidationError') {
+        const messages = Object.values(err.errors).map(val => val.message);
+        return res.status(400).json({ message: messages.join(', ') });
+      }
+      res.status(500).send('Server Error');
     }
-    res.status(500).json({ message: 'Server error deleting article.' });
   }
-});
-// ----------------------------------------------------
+);
 
-// ----------------------------------------------------
-// NEW: API endpoint to update an article by ID
-app.put('/api/articles/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, content, category, author, imageUrl } = req.body;
+// @route   DELETE /api/articles/:id
+// @desc    Delete an article (only by owner or admin)
+// @access  Private (Auth required)
+app.delete(
+  '/api/articles/:id',
+  auth,
+  async (req, res) => {
+    try {
+      const article = await Article.findById(req.params.id);
 
-    // Basic validation
-    if (!title || !content || !category || !author) {
-      return res.status(400).json({ message: 'Please provide title, content, category, and author for update.' });
+      if (!article) {
+        return res.status(404).json({ msg: 'Article not found' });
+      }
+
+      if (article.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'User not authorized to delete this article' });
+      }
+
+      await Article.findByIdAndDelete(req.params.id);
+
+      res.status(204).send();
+
+    } catch (err) {
+      console.error(err.message);
+      if (err.name === 'CastError') {
+        return res.status(400).json({ msg: 'Invalid article ID format.' });
+      }
+      res.status(500).send('Server Error');
     }
-
-    // Find the article by ID and update it.
-    // { new: true } returns the updated document instead of the original.
-    // { runValidators: true } ensures schema validators run on update.
-    const updatedArticle = await Article.findByIdAndUpdate(
-      id,
-      { title, content, category, author, imageUrl },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedArticle) {
-      return res.status(404).json({ message: 'Article not found.' });
-    }
-
-    res.json(updatedArticle); // Respond with the updated article
-
-  } catch (err) {
-    console.error(`Error updating article with ID ${req.params.id}:`, err);
-    if (err.name === 'CastError') {
-        return res.status(400).json({ message: 'Invalid article ID format.' });
-    }
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map(val => val.message);
-      return res.status(400).json({ message: messages.join(', ') });
-    }
-    res.status(500).json({ message: 'Server error updating article.' });
+    // REMOVED: Redundant error response here: res.status(500).json({ message: 'Server error updating article.' });
   }
-});
-// ----------------------------------------------------
+);
+
 
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log('Press Ctrl+C to stop the server.');
 });
-
-
-// // Our mock news articles (for now, hardcoded)
-// const mockArticles = [
-//   {
-//     id: '1',
-//     title: 'Local Elections: New Mayor Pledges Community Growth',
-//     content: 'In a closely contested race, Sarah Chen has been elected as the new mayor, promising initiatives focused on urban development and public services...',
-//     category: 'Politics',
-//     author: 'Reporter A',
-//     imageUrl: 'https://via.placeholder.com/150/FF5733/FFFFFF?text=Election',
-//     publishedDate: '2025-06-03T10:00:00Z'
-//   },
-//   {
-//     id: '2',
-//     title: 'Tech Giant Unveils Revolutionary AI Chip',
-//     content: 'InnovateCorp announced today a breakthrough in artificial intelligence hardware, claiming their new chip will dramatically accelerate AI computations...',
-//     category: 'Technology',
-//     author: 'Tech Guru',
-//     imageUrl: 'https://via.placeholder.com/150/3366FF/FFFFFF?text=AI+Chip',
-//     publishedDate: '2025-06-02T14:30:00Z'
-//   },
-//   {
-//     id: '3',
-//     title: 'City Marathon Breaks Participation Records',
-//     content: 'Thousands of runners took to the streets for the annual city marathon, setting a new record for participants and raising millions for charity...',
-//     category: 'Sports',
-//     author: 'Sports Fan',
-//     imageUrl: 'https://via.placeholder.com/150/33FF57/FFFFFF?text=Marathon',
-//     publishedDate: '2025-06-01T09:15:00Z'
-//   }
-// ];
-
-// // New API endpoint to get all articles
-// app.get('/api/articles', (req, res) => {
-//   // When this endpoint is hit, send the mockArticles array as a JSON response.
-//   // Express's res.json() method automatically sets the Content-Type header to application/json.
-//   res.json(mockArticles);
-// });
-
-// // 5. Start the server and make it listen for incoming requests
-// app.listen(PORT, () => {
-//   console.log(`Server is running on http://localhost:${PORT}`);
-//   console.log('Press Ctrl+C to stop the server.');
-// });

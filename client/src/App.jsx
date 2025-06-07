@@ -6,12 +6,19 @@ import { Routes, Route, Link,useParams } from 'react-router-dom';
 // NEW: Import react-toastify components and CSS
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { AuthProvider } from './contexts/AuthContext'; // <-- Import AuthProvider
 
 import ArticleDetail from './components/ArticleDetail';
 import ArticleForm from './components/ArticleForm';
 import HomeComponent from './components/HomeComponent';
 import Navbar from './components/Navbar';
 import './App.css';
+// NEW IMPORTS:
+import Register from './components/auth/Register';
+import Login from './components/auth/Login'
+import PrivateRoute from './components/routing/PrivateRoute'; // <-- NEW IMPORT
+
+
 
 function App() {
   // ----------------------------------------------------
@@ -78,9 +85,11 @@ function App() {
 
   return (
     <div className="App">
-      <Navbar />
+      
+       
       <div className="routes-wrapper"> {/* NEW: Add this wrapper */}
-
+    <AuthProvider> {/* Wrap your entire app with AuthProvider */}
+    <Navbar /> 
       <Routes>
         <Route path="/" element={<HomeComponent />} />
         <Route path="/article/:id" element={<ArticleDetail />} />
@@ -92,13 +101,30 @@ function App() {
           a prop from App that calls a method in HomeComponent.
         */}
         {/* For create-article, ArticleForm handles its own success message and redirect now */}
-       <Route path="/create-article" element={<ArticleForm />} />
-
-        {/* RE-ADD THIS ROUTE LINE */}
-        <Route path="/edit-article/:id" element={<EditArticlePage />} />
-
+       {/* Protected Routes - Use ArticleForm for both create and edit */}
+            <Route
+              path="/create-article"
+              element={
+                <PrivateRoute>
+                  <ArticleForm mode="create" /> {/* <-- Pass mode prop */}
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/edit-article/:id"
+              element={
+                <PrivateRoute>
+                  <ArticleForm mode="edit" /> {/* <-- Pass mode prop */}
+                </PrivateRoute>
+              }
+            />
+{/* NEW ROUTES: */}
+            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login />} />
         <Route path="*" element={<h2>404 - Page Not Found</h2>} />
       </Routes>
+  </AuthProvider>
+
     </div> {/* NEW: Close the wrapper */}
 
       {/* Add this footer section */}
